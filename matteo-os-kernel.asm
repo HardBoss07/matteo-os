@@ -88,6 +88,14 @@ c_help_tail:
 c_clear     DB  "clear", 0
 c_clear_tail:
 
+help_msg    DB  "Matteo-OS Help", 0Dh, 0Ah
+            DB  "Thank you for choosing Matteo-OS!", 0Dh, 0Ah
+            DB  "Down here is a list of all commands:", 0Dh, 0Ah
+            DB  "'help' - print out this list", 0Dh, 0Ah
+            DB  "'clear' - clear the screen", 0Dh, 0Ah, 0
+
+unknown     DB  "unknown command: ", 0
+
 ; start
 START: 
     ; set data
@@ -107,6 +115,7 @@ START:
     ; integrity check
     CMP [0000], 0E9h
     JZ  integrity_check_ok
+    integrity_failed:
     MOV AL, 'F'
     MOV AH, 0eh
     INT 10h
@@ -119,7 +128,7 @@ START:
     MOV AX, 0040h
     MOV DS, AX
     MOV W.[0072h], 0000h
-    JMP offffh:0000h
+    JMP 0ffffh:0000h
     integrity_check_ok:
     NOP
     
@@ -131,7 +140,7 @@ START:
     CALL PRINT_STRING
     
     eternal_loop:
-        CALL GET_COMMAND PROC near
+        CALL GET_COMMAND
         CALL PROCESS_CMD
         
         JMP  eternal_loop
@@ -248,14 +257,14 @@ START:
         MOV CL, 0
         MOV DI, 84h
         MOV DH, ES:[DI]
-        MOV DH
+        DEC DH
         MOV DI, 4ah
         MOV DL, ES:[DI]
         DEC DL
         INT 10h
         
         RET
-    SCROLL:T:AREA ENDP
+    SCROLL_T_AREA ENDP
     
     GET_STRING PROC near
         PUSH    AX
@@ -269,3 +278,110 @@ START:
         JBE     empty_buffer
         
         DEC     DX
+        
+    WAIT_FOR_KEY:
+        MOV     AH, 0
+        INT     16h
+        
+        CMP     AL, 0Dh
+        JZ      exit
+        
+        CMP     AL, 8
+        JNE     ADD_TO_BUFFER
+        JCXZ    WAIT_FOR_KEY
+        DEC     CX
+        DEC     DI
+        putc    8
+        putc    ' '
+        putc    8
+        JMP     WAIT_FOR_KEY
+        
+    ADD_TO_BUFFER:
+        CMP     CX, DX
+        JAE     WAIT_FOR_KEY
+        
+        MOV     [DI], AL
+        INC     DI
+        INC     CX
+        
+        MOV     AH, 0eh
+        INT     10h
+        
+        JMP WAIT_FOR_KEY
+        
+    exit:
+        MOV     [DI], 0
+    
+    empty_buffer:
+        POP     DX
+        POP     DI
+        POP     CX
+        POP     AX
+        RET         
+        
+    GET_STRING  ENDP
+    
+    PRINT_STRING PROC near
+        PUSH    AX
+        PUSH    SI
+        
+    next_char:
+        MOV AL, [SI]
+        CMP AL, 0
+        JZ  printed
+        INC SI
+        MOV AH, 0eh
+        INT 10h
+        JMP next_char
+    
+    printed:
+        POP SI
+        POP AX
+        RET
+        
+    PRINT_STRING ENDP
+    
+    ; clear screen and set cursor at top
+    ; default color scheme is white on blue
+    CLEAR_SCREEN PROC near
+        ; store registers
+        PUSH    AX
+        PUSH    DS
+        PUSH    BX
+        PUSH    CX
+        PUSH    DI
+        
+        ; getting screen parameters, upper and lower row / col
+        MOV     AX, 40h
+        MOV     DS, AX
+        MOV     AH, 06h
+        MOV     AL, 0
+        MOV     BH, 1001_1111b
+        
+        MOV     CH, 0
+        MOV     CL, 0
+        MOV     DI, 84h
+        
+        MOV     DH, [DI]
+        MOV     DI, 4ah
+        MOV     DL, [DI]
+        DEC     DL
+        INT     10h
+        
+        ; set cursor at top
+        MOV     BH, 0
+        MOV     DL, 0
+        MOV     DH, 0
+        MOV     AH, 02
+        INT     10h
+        
+        ; re-store registers
+        POP     DI
+        POP     CX
+        POP     BX
+        POP     DS
+        POP     AX
+        
+        RET
+        
+    CLEAR_SCREEN ENDP    
